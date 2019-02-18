@@ -9,7 +9,7 @@ enum PORTTYPE {
 };
 
 struct device {
-	const struct pci_dev *pdev;
+	struct pci_dev *pdev;
 	struct device *prev, *next; /* a bunch of siblings */
 	unsigned int devcap_id, devcap, devctl;
 	unsigned int cap_offset;

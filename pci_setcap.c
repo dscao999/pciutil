@@ -113,7 +113,7 @@ static int pci_scan(struct pci_access *access, struct domain **dm)
 		cdev->cap_offset = noffset;
 		cdev->devcap_id = cv;
 		cdev->devcap = pci_read_long(pdev, noffset+4);
-		cdev->devctl = pci_read_word(pdev, noffset+8);
+		cdev->devctl = pci_read_long(pdev, noffset+8);
 		cdev->type = (cv >> 20) & 0x0f;
 		if (cdev->type <= 8 && cdev->type >= 4) {
 			cv = pci_read_long(pdev, 0x18);
@@ -134,10 +134,11 @@ static int pci_scan(struct pci_access *access, struct domain **dm)
 static void print_path(struct domain *domain, struct pcidev_id *devids,
 		int numpcis)
 {
-	int i, busno;
+	int i, busno, setp;
 	struct pcidev_id *id;
 	struct pcibus *bus, *ubus;
 	struct device *cdev, *udev;
+	u32 devctl;
 
 	for (i = 0, id = devids; i < numpcis; i++, id++) {
 		busno = id->busno;
@@ -151,6 +152,7 @@ static void print_path(struct domain *domain, struct pcidev_id *devids,
 			}
 			ubus = bus;
 			udev = cdev;
+			setp = 0;
 			do {
 				printf("%04x::%02x:%02x.%01x", domain->num,
 						udev->pdev->bus,
@@ -159,6 +161,11 @@ static void print_path(struct domain *domain, struct pcidev_id *devids,
 				printf(" MaxPayload: %d set to %d",
 						payload[udev->devcap & 0x07],
 						payload[(udev->devctl>>5) & 0x07]);
+				if (pciset && !setp) {
+					devctl = (udev->devctl & 0xffffff1fu) | (0 << 5);
+					setp = 1;
+					pci_write_long(udev->pdev, udev->cap_offset+8, devctl);
+				}
 				udev = ubus->up_agent;
 				if (udev) {
 					ubus = domain->buses + udev->pdev->bus;
@@ -203,8 +210,13 @@ int main(int argc, char *argv[])
 	
 	numpcis = argc - optind;
 	devids = NULL;
-	if (numpcis > 0)
+	if (numpcis > 0) {
 		devids = malloc(numpcis*sizeof(*devids));
+		if (!devids) {
+			fprintf(stderr, "Out of Memory!\n");
+			return 10000;
+		}
+	}
 		
 	numpcis = 0;
 	for (devid = devids, i = optind; i < argc; i++) {
@@ -235,6 +247,7 @@ int main(int argc, char *argv[])
 
 	pci_cleanup(access);
 
+	free(devids);
 exit_00:
 	return retv;
 }
